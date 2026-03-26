@@ -15,6 +15,17 @@ npx plugins add sanurb/effectts-skills
 npx skills add sanurb/effectts-skills
 ```
 
+## Prerequisites
+
+The `effect-review` skill uses external CLI tools for fast, deterministic detection. Install them before running audits:
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| [ripgrep](https://github.com/BurntSushi/ripgrep) | Text-safe rule detection | `brew install ripgrep` / `cargo install ripgrep` |
+| [ast-grep](https://github.com/ast-grep/ast-grep) | Structural (AST) rule detection | `brew install ast-grep` / `cargo install ast-grep` / `npm i -g @ast-grep/cli` |
+
+Both are optional for the other skills — only `effect-review` requires them.
+
 ## Skills
 
 ### `effect-ts` — Ambient Reference *(auto-activates)*
@@ -62,7 +73,8 @@ References are injected once per topic per session — no duplicate context.
 
 | Topic | File |
 |-------|------|
-| Services & Layers | `references/services-and-layers.md` |
+| Services | `references/services.md` |
+| Layers | `references/layers.md` |
 | Data Modeling | `references/data-modeling.md` |
 | Schema Decisions | `references/schema-decisions.md` |
 | Error Handling | `references/error-handling.md` |
@@ -73,6 +85,7 @@ References are injected once per topic per session — no duplicate context.
 | Processes | `references/processes.md` |
 | Setup | `references/setup.md` |
 | Anti-Patterns | `references/anti-patterns.md` |
+| Reference Status | `references/effect-setup-status.md` |
 
 ## Sources
 

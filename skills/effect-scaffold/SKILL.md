@@ -20,6 +20,18 @@ Generate idiomatic Effect v4 code adapted to the project's conventions.
 
 ## Workflow
 
+### Step 0 — Verify Effect v4
+
+Before generating ANY code, verify the project uses Effect v4:
+
+```
+Read package.json → check "effect" version
+```
+
+- If version starts with `4.` or `^4.` or `>=4` or `beta` → proceed
+- If version starts with `3.` or `2.` or `@effect-ts/` → STOP. Report: "This project uses Effect v{version}. These templates require v4. Upgrade first."
+- If no `effect` in dependencies → STOP. Report: "No Effect dependency found. Run: bun add effect@beta"
+
 ### Step 1 — Discover Conventions
 
 Before generating, scan the project for existing patterns:
@@ -45,9 +57,9 @@ Select the template matching `$ARGUMENTS[0]` and replace `{Name}` with `$ARGUMEN
 
 <critical>
 NON-NEGOTIABLE for ALL generated code:
-- ServiceMap.Service for services (tag: `@app/{Name}`)
+- ServiceMap.Service for services (tag: `"pkg/path/ServiceName"`, e.g. `"myapp/users/Users"`)
 - Brand ALL IDs with real constraints (Schema.pattern + Schema.brand)
-- Schema.TaggedErrorClass for errors
+- Schema.TaggedErrorClass with type parameter: `Schema.TaggedErrorClass<T>()("Tag", {...})`
 - Effect.fn for all service methods
 - readonly properties on services
 - All exports explicit (named exports, no default)
@@ -57,15 +69,17 @@ NON-NEGOTIABLE for ALL generated code:
 
 #### Template: service
 
+Derive `{prefix}` from `{Name}`: lowercase first 3 chars (e.g., Users → `usr`, Order → `ord`, Payment → `pay`).
+
 ```ts
-import { Effect, Schema, Layer } from "effect"
-import { ServiceMap } from "effect/unstable"
+import { Effect, Layer, Schema, ServiceMap } from "effect"
 
 // ── ID ──────────────────────────────────────────────
 const {Name}Id = Schema.String.pipe(
   Schema.pattern(/^{prefix}_[a-z0-9]{12}$/),
   Schema.brand("{Name}Id")
 )
+type {Name}Id = typeof {Name}Id.Type
 
 // ── Errors ──────────────────────────────────────────
 class {Name}NotFoundError extends Schema.TaggedErrorClass<{Name}NotFoundError>()(
@@ -74,47 +88,43 @@ class {Name}NotFoundError extends Schema.TaggedErrorClass<{Name}NotFoundError>()
 ) {}
 
 // ── Service ─────────────────────────────────────────
-class {Name} extends ServiceMap.Service<{Name}>()("@app/{Name}", {
-  findById: Effect.fn("{Name}.findById")(function* (id: typeof {Name}Id.Type) {
-    // TODO: implement
-  }),
-  create: Effect.fn("{Name}.create")(function* (data: unknown) {
-    // TODO: implement
-  }),
-}) {}
+class {Name} extends ServiceMap.Service<{Name}, {
+  findById(id: {Name}Id): Effect.Effect<unknown, {Name}NotFoundError>
+  create(data: unknown): Effect.Effect<unknown>
+}>()(
+  "myapp/{name}/{Name}"
+) {
+  static readonly layer = Layer.effect(
+    {Name},
+    Effect.gen(function* () {
+      const findById = Effect.fn("{Name}.findById")(function* (id: {Name}Id) {
+        // TODO: implement
+      })
 
-// ── Live Layer ──────────────────────────────────────
-const {Name}Live = Layer.effect(
-  {Name},
-  Effect.gen(function* () {
+      const create = Effect.fn("{Name}.create")(function* (data: unknown) {
+        // TODO: implement
+      })
+
+      return {Name}.of({ findById, create })
+    })
+  )
+
+  static readonly testLayer = Layer.sync({Name}, () => {
+    const store = new Map<{Name}Id, unknown>()
     return {Name}.of({
-      findById: Effect.fn("{Name}.findById")(function* (id) {
-        // TODO: real implementation
-      }),
-      create: Effect.fn("{Name}.create")(function* (data) {
-        // TODO: real implementation
+      findById: (id) =>
+        Effect.fromNullable(store.get(id)).pipe(
+          Effect.mapError(() => new {Name}NotFoundError({ id }))
+        ),
+      create: (data) => Effect.sync(() => {
+        // TODO: generate ID + store
+        return data
       }),
     })
   })
-)
+}
 
-// ── Test Layer ──────────────────────────────────────
-const {Name}Test = Layer.sync(
-  {Name},
-  () => {
-    const store = new Map<typeof {Name}Id.Type, unknown>()
-    return {Name}.of({
-      findById: Effect.fn("{Name}.findById")(function* (id) {
-        // TODO: in-memory lookup from store
-      }),
-      create: Effect.fn("{Name}.create")(function* (data) {
-        // TODO: in-memory store.set
-      }),
-    })
-  }
-)
-
-export { {Name}, {Name}Live, {Name}Test, {Name}Id, {Name}NotFoundError }
+export { {Name}, {Name}Id, {Name}NotFoundError }
 ```
 
 #### Template: schema
@@ -146,19 +156,9 @@ export { {Name}, {Name}Id, {Name}FromJson }
 ```ts
 import { Schema } from "effect"
 
-class {Name}Error extends Schema.TaggedErrorClass<{Name}Error>()(
-  "{Name}Error",
-  {
-    message: Schema.String,
-    // TODO: add context fields
-  }
-) {}
-
 class {Name}NotFoundError extends Schema.TaggedErrorClass<{Name}NotFoundError>()(
   "{Name}NotFoundError",
-  {
-    id: Schema.String,
-  }
+  { id: Schema.String }
 ) {}
 
 class {Name}ValidationError extends Schema.TaggedErrorClass<{Name}ValidationError>()(
@@ -169,6 +169,11 @@ class {Name}ValidationError extends Schema.TaggedErrorClass<{Name}ValidationErro
   }
 ) {}
 
+class {Name}Error extends Schema.TaggedErrorClass<{Name}Error>()(
+  "{Name}Error",
+  { cause: Schema.Defect }
+) {}
+
 export { {Name}Error, {Name}NotFoundError, {Name}ValidationError }
 ```
 
@@ -176,23 +181,34 @@ export { {Name}Error, {Name}NotFoundError, {Name}ValidationError }
 
 ```ts
 import { Effect } from "effect"
-import { describe, expect } from "vitest"
-import { it } from "@effect/vitest"
-// TODO: import {Name} service and test layer
+import { assert, describe, it } from "@effect/vitest"
+import { {Name} } from "../src/{name}"
 
 describe("{Name}", () => {
-  it.effect("should create", () =>
+  it.effect("creates an instance", () =>
     Effect.gen(function* () {
-      // TODO: implement test
-      expect(true).toBe(true)
-    }).pipe(Effect.provide(/* {Name}Test */))
+      const svc = yield* {Name}
+      const result = yield* svc.create({ /* TODO: valid data */ })
+      assert.isDefined(result)
+    }).pipe(Effect.provide({Name}.testLayer))
   )
 
-  it.effect("should find by id", () =>
+  it.effect("finds by id", () =>
     Effect.gen(function* () {
-      // TODO: implement test
-      expect(true).toBe(true)
-    }).pipe(Effect.provide(/* {Name}Test */))
+      const svc = yield* {Name}
+      const created = yield* svc.create({ /* TODO: valid data */ })
+      // TODO: extract ID, then findById
+    }).pipe(Effect.provide({Name}.testLayer))
+  )
+
+  it.effect("rejects unknown id", () =>
+    Effect.gen(function* () {
+      const svc = yield* {Name}
+      const error = yield* svc.findById(
+        /* TODO: nonexistent ID */
+      ).pipe(Effect.flip)
+      assert.strictEqual(error._tag, "{Name}NotFoundError")
+    }).pipe(Effect.provide({Name}.testLayer))
   )
 })
 ```

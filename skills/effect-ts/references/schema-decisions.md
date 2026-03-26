@@ -183,7 +183,7 @@ const Result = Schema.Union([Success, Failure])
 type Result = typeof Result.Type
 ```
 
-## Anti-Patterns
+## Schema Anti-Patterns
 
 | Anti-Pattern | Fix |
 |--------------|-----|
@@ -193,4 +193,5 @@ type Result = typeof Result.Type
 | Schema.Class without Equal/Hash | Use Struct instead (no benefit) |
 | Phantom `& { _tag }` | Use Schema.brand with real constraints |
 | `as Type` casts | Use Schema.decodeUnknown |
-| Bare `Schema.String.pipe(Schema.brand(...))` | Add real constraints: NonEmptyString, pattern() |
+
+For general Effect anti-patterns (C1–C10, W1–W9) → see [anti-patterns.md](anti-patterns.md).

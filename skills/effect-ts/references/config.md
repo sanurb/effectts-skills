@@ -56,7 +56,7 @@ class ApiConfig extends ServiceMap.Service<
     readonly baseUrl: string
     readonly timeout: number
   }
->()("@app/ApiConfig") {
+>()("myapp/config/ApiConfig") {
   static readonly layer = Layer.effect(
     ApiConfig,
     Effect.gen(function* () {
@@ -174,7 +174,7 @@ Use `Schema.Redacted(Schema.String)` in config schemas:
 class DatabaseConfig extends ServiceMap.Service<
   DatabaseConfig,
   { readonly host: string; readonly port: number; readonly password: Redacted.Redacted }
->()("@app/DatabaseConfig") {
+>()("myapp/config/DatabaseConfig") {
   static readonly layer = Layer.effect(DatabaseConfig, Effect.gen(function* () {
     const host = yield* Config.schema(Schema.String, "DB_HOST")
     const port = yield* Config.schema(Port, "DB_PORT")

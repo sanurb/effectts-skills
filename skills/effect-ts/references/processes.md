@@ -12,25 +12,26 @@ Adapted from [artimath/effect-skills](https://github.com/artimath/effect-skills)
 
 ## Fork Types
 
-| Type | Lifetime | Cleanup | Use Case |
-|------|----------|---------|----------|
-| `Effect.fork` | Dies with parent fiber | Automatic | Concurrent work within a scope |
+| v4 Name | Lifetime | Cleanup | Use Case |
+|---------|----------|---------|----------|
+| `Effect.forkChild` | Dies with parent fiber | Automatic | Concurrent work within a scope |
 | `Effect.forkScoped` | Dies with scope | Auto-registered | Server workers, scoped tasks |
-| `Effect.forkDaemon` | Independent | **Manual required** | Background tasks outliving parent |
-| `Effect.forkChild` | Dies with parent | Automatic | Child tasks for TestClock |
+| `Effect.forkDetach` | Independent | **Manual required** | Background tasks outliving parent |
+
+> **v3 migration:** `Effect.fork` → `Effect.forkChild`, `Effect.forkDaemon` → `Effect.forkDetach`
 
 ```typescript
 import { Effect, Fiber, Scope } from "effect"
 
-// fork: dies with parent
-const fiber = yield* Effect.fork(myEffect)
+// forkChild: dies with parent (v3: Effect.fork)
+const fiber = yield* Effect.forkChild(myEffect)
 const result = yield* Fiber.join(fiber)
 
 // forkScoped: dies when scope closes
 yield* Effect.forkScoped(backgroundLoop)
 
-// forkDaemon: outlives parent, YOU must clean up
-const fiber = yield* Effect.forkDaemon(work)
+// forkDetach: outlives parent, YOU must clean up (v3: Effect.forkDaemon)
+const fiber = yield* Effect.forkDetach(work)
 yield* scope.addFinalizer(() => Fiber.interrupt(fiber))
 ```
 
@@ -185,7 +186,7 @@ const startBackground = (command: string) =>
     const process = yield* Command.start(cmd).pipe(Scope.extend(scope))
 
     // Fork ONLY the output collection (not the scoped acquisition)
-    yield* Effect.forkDaemon(
+    yield* Effect.forkDetach(
       Effect.gen(function* () {
         const stdout = yield* process.stdout.pipe(
           Stream.decodeText(), Stream.runCollect,
@@ -211,7 +212,7 @@ const killShell = (shell: BackgroundShell) =>
 
 ```typescript
 // BAD: process trapped inside daemon's scope, unreachable from outside
-yield* Effect.forkDaemon(
+yield* Effect.forkDetach(
   Effect.scoped(
     Effect.gen(function* () {
       const process = yield* Command.start(cmd) // can't access this!
@@ -222,5 +223,5 @@ yield* Effect.forkDaemon(
 // GOOD: manual scope, fork only the work
 const scope = yield* Scope.make()
 const process = yield* Command.start(cmd).pipe(Scope.extend(scope))
-yield* Effect.forkDaemon(collectOutput(process)) // fork only collection
+yield* Effect.forkDetach(collectOutput(process)) // fork only collection
 ```

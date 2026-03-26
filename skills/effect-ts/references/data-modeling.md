@@ -5,7 +5,7 @@
 - [Why Schema](#why-schema)
 - [Records (AND Types)](#records-and-types)
 - [Variants (OR Types)](#variants-or-types)
-- [Branded Types](#branded-types)
+- [Branded Types](#branded-types) (→ schema-decisions.md)
 - [JSON Encoding and Decoding](#json-encoding-and-decoding)
 - [Common Schema Primitives](#common-schema-primitives)
 
@@ -27,10 +27,13 @@ Use `Schema.Class` for composite data models:
 ```typescript
 import { Schema } from "effect"
 
-const UserId = Schema.String.pipe(Schema.brand("UserId"))
+const UserId = Schema.String.pipe(
+  Schema.pattern(/^usr_[a-z0-9]{12}$/),
+  Schema.brand("UserId")
+)
 type UserId = typeof UserId.Type
 
-class User extends Schema.Class("User")({
+class User extends Schema.Class<User>("User")({
   id: UserId,
   name: Schema.String,
   email: Schema.String,
@@ -42,7 +45,7 @@ class User extends Schema.Class("User")({
 }
 
 const user = new User({
-  id: UserId.makeUnsafe("user-123"),
+  id: UserId.makeUnsafe("usr_abc123def456"),
   name: "Alice",
   email: "alice@example.com",
   createdAt: new Date(),
@@ -84,35 +87,7 @@ const renderResult = (result: Result) =>
 
 ## Branded Types
 
-Brand nearly all primitives with semantic meaning. Not just IDs, but emails, URLs, counts, ports, slugs:
-
-```typescript
-import { Schema } from "effect"
-
-// Entity IDs
-const UserId = Schema.String.pipe(Schema.brand("UserId"))
-type UserId = typeof UserId.Type
-
-const PostId = Schema.String.pipe(Schema.brand("PostId"))
-type PostId = typeof PostId.Type
-
-// Domain primitives
-const Email = Schema.String.pipe(Schema.brand("Email"))
-type Email = typeof Email.Type
-
-const Port = Schema.Int.pipe(
-  Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
-  Schema.brand("Port")
-)
-type Port = typeof Port.Type
-
-// Usage: impossible to mix types
-const userId = UserId.makeUnsafe("user-123")
-const postId = PostId.makeUnsafe("post-456")
-
-function getUser(id: UserId) { /* ... */ }
-// getUser(postId) // Type error: can't pass PostId where UserId expected
-```
+For branded type patterns and constraints → see [schema-decisions.md](schema-decisions.md#branded-types-always-add-real-constraints).
 
 ## JSON Encoding and Decoding
 

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "services",
+    "patterns": ["ServiceMap\\.Service", "Layer\\.effect", "Layer\\.sync", "Layer\\.scoped"],
+    "ref": "services.md",
+    "label": "Services"
+  },
+  {
+    "id": "data-modeling",
+    "patterns": ["Schema\\.Class", "Schema\\.TaggedClass", "Schema\\.Struct\\(", "Schema\\.brand"],
+    "ref": "data-modeling.md",
+    "label": "Data Modeling"
+  },
+  {
+    "id": "errors",
+    "patterns": ["Schema\\.TaggedErrorClass", "Schema\\.TaggedError", "Effect\\.catchTag", "Schema\\.Defect"],
+    "ref": "error-handling.md",
+    "label": "Error Handling"
+  },
+  {
+    "id": "testing",
+    "patterns": ["from [\"']@effect/vitest", "it\\.effect", "it\\.layer", "it\\.live"],
+    "ref": "testing.md",
+    "label": "Testing"
+  },
+  {
+    "id": "http",
+    "patterns": ["from [\"']effect/unstable/http", "HttpClient", "HttpClientResponse", "FetchHttpClient"],
+    "ref": "http-clients.md",
+    "label": "HTTP Clients"
+  },
+  {
+    "id": "cli",
+    "patterns": ["from [\"']effect/unstable/cli", "Command\\.make\\(", "Argument\\.", "Flag\\."],
+    "ref": "cli.md",
+    "label": "CLI"
+  },
+  {
+    "id": "config",
+    "patterns": ["Config\\.redacted", "Config\\.schema", "ConfigProvider", "Config\\.int\\(", "Config\\.string\\("],
+    "ref": "config.md",
+    "label": "Config"
+  },
+  {
+    "id": "processes",
+    "patterns": ["Scope\\.make", "Scope\\.extend", "Effect\\.forkDetach", "Effect\\.forkDaemon", "Effect\\.forkScoped", "Command\\.start"],
+    "ref": "processes.md",
+    "label": "Processes & Scopes"
+  }
+]

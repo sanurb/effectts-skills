@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * PreToolUse hook: detect Effect patterns in file being read/edited,
- * inject relevant reference doc.
+ * PreToolUse hook (Claude Code): detect Effect patterns in file being read/edited,
+ * inject relevant reference doc. Pattern config loaded from shared/patterns.json.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -10,18 +10,15 @@ import { fileURLToPath } from "node:url";
 const pluginRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const refsDir = join(pluginRoot, "skills", "effect-ts", "references");
 
-const PATTERNS = [
-  { match: /ServiceMap\.Service|Layer\.effect|Layer\.sync|Layer\.scoped/, ref: "services-and-layers.md" },
-  { match: /Schema\.Class|Schema\.TaggedClass|Schema\.Struct\(|Schema\.brand/, ref: "data-modeling.md" },
-  { match: /Schema\.TaggedErrorClass|Schema\.TaggedError|Effect\.catchTag/, ref: "error-handling.md" },
-  { match: /from ["']@effect\/vitest|it\.effect|it\.layer/, ref: "testing.md" },
-  { match: /from ["']effect\/unstable\/http|HttpClient|HttpClientResponse/, ref: "http-clients.md" },
-  { match: /from ["']effect\/unstable\/cli|Command\.make\(|Argument\.|Flag\./, ref: "cli.md" },
-  { match: /Config\.redacted|Config\.schema|ConfigProvider/, ref: "config.md" },
-  { match: /Scope\.make|Scope\.extend|Effect\.forkDaemon|Effect\.forkScoped/, ref: "processes.md" },
-];
+// Single source of truth for patterns
+const rawPatterns = JSON.parse(
+  readFileSync(join(pluginRoot, "shared", "patterns.json"), "utf-8")
+);
+const PATTERNS = rawPatterns.map((p) => ({
+  match: new RegExp(p.patterns.join("|")),
+  ref: p.ref,
+}));
 
-// Track injected refs per session via env
 const seen = new Set((process.env.EFFECT_SEEN_REFS || "").split(",").filter(Boolean));
 
 function loadRef(file) {
@@ -43,13 +40,11 @@ try {
 const toolInput = input.tool_input || {};
 const filePath = toolInput.file_path || toolInput.path || toolInput.command || "";
 
-// Only process .ts/.tsx files
 if (!filePath.match(/\.tsx?$/)) {
   process.stdout.write("{}");
   process.exit(0);
 }
 
-// Try to read the file content to detect patterns
 let content = "";
 try {
   const fullPath = filePath.startsWith("/") ? filePath : join(input.cwd || process.cwd(), filePath);
@@ -57,7 +52,7 @@ try {
     content = readFileSync(fullPath, "utf-8");
   }
 } catch {
-  // File might not exist yet (Write), that's fine
+  // File might not exist yet (Write)
 }
 
 if (!content) {
@@ -65,7 +60,6 @@ if (!content) {
   process.exit(0);
 }
 
-// Find first matching pattern not yet injected
 let injected = null;
 for (const { match, ref } of PATTERNS) {
   if (match.test(content) && !seen.has(ref)) {
@@ -79,15 +73,12 @@ for (const { match, ref } of PATTERNS) {
 }
 
 if (injected) {
-  const output = {
+  process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
       additionalContext: `<effect-reference topic="${injected.ref}">\n${injected.doc}\n</effect-reference>`,
     },
-    env: {
-      EFFECT_SEEN_REFS: [...seen].join(","),
-    },
-  };
-  process.stdout.write(JSON.stringify(output));
+    env: { EFFECT_SEEN_REFS: [...seen].join(",") },
+  }));
 } else {
   process.stdout.write("{}");
 }

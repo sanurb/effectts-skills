@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import * as fs from "node:fs";
@@ -7,8 +6,8 @@ import * as path from "node:path";
 
 // Reference doc topics and their files
 const TOPICS: Record<string, { file: string; label: string }> = {
-  services: { file: "services-and-layers.md", label: "Services & Layers" },
-  layers: { file: "services-and-layers.md", label: "Services & Layers" },
+  services: { file: "services.md", label: "Services" },
+  layers: { file: "layers.md", label: "Layers" },
   "data-modeling": { file: "data-modeling.md", label: "Data Modeling" },
   schema: { file: "schema-decisions.md", label: "Schema Decisions" },
   errors: { file: "error-handling.md", label: "Error Handling" },
@@ -18,43 +17,25 @@ const TOPICS: Record<string, { file: string; label: string }> = {
   config: { file: "config.md", label: "Config" },
   processes: { file: "processes.md", label: "Processes & Scopes" },
   setup: { file: "setup.md", label: "Project Setup" },
+  status: { file: "effect-setup-status.md", label: "Reference Status" },
 };
 
-// Pattern detection for smart injection
-const PATTERNS: Record<string, { match: RegExp[]; topic: string }> = {
-  services: {
-    match: [/ServiceMap\.Service/, /Layer\.effect/, /Layer\.sync/, /Layer\.scoped/],
-    topic: "services",
-  },
-  schema: {
-    match: [/Schema\.Class/, /Schema\.TaggedClass/, /Schema\.Struct/, /Schema\.brand/],
-    topic: "data-modeling",
-  },
-  errors: {
-    match: [/Schema\.TaggedErrorClass/, /Schema\.TaggedError/, /Effect\.catchTag/, /Schema\.Defect/],
-    topic: "errors",
-  },
-  testing: {
-    match: [/from ["']@effect\/vitest/, /it\.effect/, /it\.layer/, /it\.live/],
-    topic: "testing",
-  },
-  http: {
-    match: [/from ["']effect\/unstable\/http/, /HttpClient/, /HttpClientResponse/, /FetchHttpClient/],
-    topic: "http",
-  },
-  cli: {
-    match: [/from ["']effect\/unstable\/cli/, /Command\.make/, /Argument\./, /Flag\./],
-    topic: "cli",
-  },
-  config: {
-    match: [/Config\.redacted/, /Config\.schema/, /ConfigProvider/, /Config\.int\(/, /Config\.string\(/],
-    topic: "config",
-  },
-  processes: {
-    match: [/Scope\.make/, /Scope\.extend/, /Effect\.forkDaemon/, /Effect\.forkScoped/, /Command\.start/],
-    topic: "processes",
-  },
-};
+// Pattern detection for smart injection — loaded from shared/patterns.json (single source of truth)
+interface PatternEntry { id: string; patterns: string[]; ref: string; label: string }
+function loadSharedPatterns(extensionFile: string): Array<{ id: string; match: RegExp; topic: string }> {
+  const sharedPath = path.resolve(path.dirname(extensionFile), "..", "shared", "patterns.json");
+  try {
+    const raw: PatternEntry[] = JSON.parse(fs.readFileSync(sharedPath, "utf-8"));
+    return raw.map((p) => ({
+      id: p.id,
+      match: new RegExp(p.patterns.join("|")),
+      topic: p.id,
+    }));
+  } catch {
+    return [];
+  }
+}
+let PATTERNS: Array<{ id: string; match: RegExp; topic: string }> = [];
 
 function getSkillDir(extensionFile: string): string {
   // extensionFile is this file. Skill is at ../skills/effect-ts/
@@ -84,12 +65,9 @@ function detectEffectProject(cwd: string): boolean {
 
 function detectPatterns(content: string): string[] {
   const detected = new Set<string>();
-  for (const [, { match, topic }] of Object.entries(PATTERNS)) {
-    for (const re of match) {
-      if (re.test(content)) {
-        detected.add(topic);
-        break;
-      }
+  for (const { match, topic } of PATTERNS) {
+    if (match.test(content)) {
+      detected.add(topic);
     }
   }
   return [...detected];
@@ -97,6 +75,7 @@ function detectPatterns(content: string): string[] {
 
 export default function (pi: ExtensionAPI) {
   const skillDir = getSkillDir(__filename);
+  PATTERNS = loadSharedPatterns(__filename);
   let isEffectProject = false;
   const injectedTopics = new Set<string>();
 
@@ -287,83 +266,91 @@ export default function (pi: ExtensionAPI) {
 // --- Scaffold generators ---
 
 function generateServiceScaffold(name: string): string {
+  const prefix = name.slice(0, 3).toLowerCase();
   return `import { Effect, Layer, Schema, ServiceMap } from "effect"
 
-const ${name}Id = Schema.String.pipe(Schema.brand("${name}Id"))
+const ${name}Id = Schema.String.pipe(
+  Schema.pattern(/^${prefix}_[a-z0-9]{12}$/),
+  Schema.brand("${name}Id")
+)
 type ${name}Id = typeof ${name}Id.Type
 
-class ${name} extends ServiceMap.Service<
-  ${name},
-  {
-    readonly findById: (id: ${name}Id) => Effect.Effect<unknown>
-    readonly create: (data: unknown) => Effect.Effect<unknown>
-  }
->()("@app/${name}") {
+class ${name}NotFoundError extends Schema.TaggedErrorClass<${name}NotFoundError>()(
+  "${name}NotFoundError",
+  { id: ${name}Id }
+) {}
+
+class ${name} extends ServiceMap.Service<${name}, {
+  findById(id: ${name}Id): Effect.Effect<unknown, ${name}NotFoundError>
+  create(data: unknown): Effect.Effect<unknown>
+}>()(
+  "myapp/${name.toLowerCase()}/${name}"
+) {
   static readonly layer = Layer.effect(
     ${name},
     Effect.gen(function* () {
-      // yield* dependencies here
-
       const findById = Effect.fn("${name}.findById")(function* (id: ${name}Id) {
-        // implementation
-        return yield* Effect.succeed({ id })
+        // TODO: implement
       })
 
       const create = Effect.fn("${name}.create")(function* (data: unknown) {
-        // implementation
-        return yield* Effect.succeed(data)
+        // TODO: implement
       })
 
-      return { findById, create }
+      return ${name}.of({ findById, create })
     })
   )
 
   static readonly testLayer = Layer.sync(${name}, () => {
     const store = new Map<${name}Id, unknown>()
-
-    const findById = (id: ${name}Id) => Effect.succeed(store.get(id))
-    const create = (data: unknown) => Effect.sync(() => {
-      // store data
-      return data
+    return ${name}.of({
+      findById: (id) =>
+        Effect.fromNullable(store.get(id)).pipe(
+          Effect.mapError(() => new ${name}NotFoundError({ id }))
+        ),
+      create: (data) => Effect.sync(() => {
+        // TODO: generate ID + store
+        return data
+      }),
     })
-
-    return { findById, create }
   })
-}`;
+}
+
+export { ${name}, ${name}Id, ${name}NotFoundError }`;
 }
 
 function generateSchemaScaffold(name: string): string {
+  const prefix = name.slice(0, 3).toLowerCase();
   return `import { Schema } from "effect"
 
-const ${name}Id = Schema.NonEmptyString.pipe(Schema.brand("${name}Id"))
+const ${name}Id = Schema.String.pipe(
+  Schema.pattern(/^${prefix}_[a-z0-9]{12}$/),
+  Schema.brand("${name}Id")
+)
 type ${name}Id = typeof ${name}Id.Type
 
-class ${name} extends Schema.Class("${name}")({
+class ${name} extends Schema.Class<${name}>("${name}")({
   id: ${name}Id,
-  name: Schema.String,
-  createdAt: Schema.Date,
-}) {
-  get displayName() {
-    return this.name
-  }
-}
+  createdAt: Schema.DateTimeUtcFromSelf,
+  // TODO: add domain fields
+}) {}
 
-// JSON encoding/decoding
-const ${name}FromJson = Schema.fromJsonString(${name})`;
+const ${name}FromJson = Schema.fromJsonString(${name})
+
+export { ${name}, ${name}Id, ${name}FromJson }`;
 }
 
 function generateErrorScaffold(name: string): string {
   return `import { Schema } from "effect"
 
-class ${name}NotFoundError extends Schema.TaggedErrorClass("${name}NotFoundError")(
+class ${name}NotFoundError extends Schema.TaggedErrorClass<${name}NotFoundError>()(
   "${name}NotFoundError",
   {
     id: Schema.String,
-    message: Schema.String,
   }
 ) {}
 
-class ${name}ValidationError extends Schema.TaggedErrorClass("${name}ValidationError")(
+class ${name}ValidationError extends Schema.TaggedErrorClass<${name}ValidationError>()(
   "${name}ValidationError",
   {
     field: Schema.String,
@@ -371,7 +358,7 @@ class ${name}ValidationError extends Schema.TaggedErrorClass("${name}ValidationE
   }
 ) {}
 
-class ${name}Error extends Schema.TaggedErrorClass("${name}Error")(
+class ${name}Error extends Schema.TaggedErrorClass<${name}Error>()(
   "${name}Error",
   {
     cause: Schema.Defect,
@@ -380,42 +367,37 @@ class ${name}Error extends Schema.TaggedErrorClass("${name}Error")(
 }
 
 function generateTestScaffold(name: string): string {
-  return `import { describe, expect, it } from "@effect/vitest"
-import { Effect, Layer } from "effect"
-// import { ${name} } from "../src/${name.toLowerCase()}"
+  return `import { assert, describe, it } from "@effect/vitest"
+import { Effect } from "effect"
+import { ${name} } from "../src/${name.toLowerCase()}"
 
 describe("${name}", () => {
-  // const testLayer = ${name}.testLayer
-
   it.effect("creates an instance", () =>
     Effect.gen(function* () {
-      // const svc = yield* ${name}
-      // const result = yield* svc.create({ name: "test" })
-      // expect(result).toBeDefined()
-      expect(true).toBe(true)
-    })
-    // .pipe(Effect.provide(testLayer))
+      const svc = yield* ${name}
+      const result = yield* svc.create({ /* TODO: provide valid data */ })
+      assert.isDefined(result)
+    }).pipe(Effect.provide(${name}.testLayer))
   )
 
   it.effect("finds by id", () =>
     Effect.gen(function* () {
-      // const svc = yield* ${name}
-      // yield* svc.create({ id: "test-1", name: "Alice" })
-      // const found = yield* svc.findById("test-1")
-      // expect(found).toBeDefined()
-      expect(true).toBe(true)
-    })
-    // .pipe(Effect.provide(testLayer))
+      const svc = yield* ${name}
+      const created = yield* svc.create({ /* TODO: provide valid data */ })
+      // TODO: extract ID from created, then:
+      // const found = yield* svc.findById(id)
+      // assert.isDefined(found)
+    }).pipe(Effect.provide(${name}.testLayer))
   )
 
-  it.effect("handles errors", () =>
+  it.effect("rejects unknown id", () =>
     Effect.gen(function* () {
-      // const svc = yield* ${name}
-      // const error = yield* svc.findById("nonexistent").pipe(Effect.flip)
-      // expect(error._tag).toBe("${name}NotFoundError")
-      expect(true).toBe(true)
-    })
-    // .pipe(Effect.provide(testLayer))
+      const svc = yield* ${name}
+      const error = yield* svc.findById(
+        /* TODO: provide a nonexistent ID */
+      ).pipe(Effect.flip)
+      assert.strictEqual(error._tag, "${name}NotFoundError")
+    }).pipe(Effect.provide(${name}.testLayer))
   )
 })`;
 }

@@ -44,20 +44,16 @@ const getUser = Effect.fn("getUser")(function* (userId: UserId) {
 })
 ```
 
-Cross-cutting concerns via second argument + `flow`:
+Cross-cutting concerns via additional arguments (do NOT use `.pipe` or `flow`):
 
 ```ts
-import { flow } from "effect"
-
 const getUser = Effect.fn("getUser")(
-  function* (userId: UserId) {
+  function* (userId: UserId): Effect.fn.Return<User, UserNotFoundError> {
     const users = yield* Users
     return yield* users.findById(userId)
   },
-  flow(
-    Effect.retry({ times: 3 }),
-    Effect.timeout("5 seconds")
-  )
+  Effect.retry({ times: 3 }),
+  Effect.timeout("5 seconds")
 )
 ```
 
@@ -66,42 +62,39 @@ const getUser = Effect.fn("getUser")(
 ## ServiceMap.Service
 
 ```ts
-class Users extends ServiceMap.Service<Users>()("@app/Users", {
-  findById: Effect.fn("Users.findById")(function* (id: UserId) {
-    // implementation
-  }),
-  create: Effect.fn("Users.create")(function* (data: CreateUser) {
-    // implementation
-  }),
-}) {}
-```
+class Users extends ServiceMap.Service<Users, {
+  findById(id: UserId): Effect.Effect<User, UserNotFoundError>
+  create(data: CreateUser): Effect.Effect<User>
+}>()(
+  "myapp/users/Users"
+) {
+  static readonly layer = Layer.effect(
+    Users,
+    Effect.gen(function* () {
+      const http = yield* HttpClient.HttpClient
 
-Implementation via Layer:
+      const findById = Effect.fn("Users.findById")(function* (id: UserId) {
+        // implementation
+      })
 
-```ts
-const UsersLive = Layer.effect(
-  Users,
-  Effect.gen(function* () {
-    const http = yield* HttpClient.HttpClient
-    return Users.of({
-      findById: Effect.fn("Users.findById")(function* (id) {
-        // real implementation
-      }),
-      create: Effect.fn("Users.create")(function* (data) {
-        // real implementation
-      }),
+      const create = Effect.fn("Users.create")(function* (data: CreateUser) {
+        // implementation
+      })
+
+      return Users.of({ findById, create })
     })
-  })
-)
+  )
+}
 ```
 
 Rules:
-- Tag format: `@app/ServiceName` — unique across the app
+- Tag format: `"pkg/path/ServiceName"` — unique, follows module path
+- Interface in second type parameter using **method syntax** (not property syntax)
 - All methods use `Effect.fn` for tracing
-- All properties `readonly`
 - `R` (requirements) type must be `never` in the class definition
+- Attach `static readonly layer` directly on the class
 
-For deep guidance → load `references/services-and-layers.md`.
+For deep guidance → load `references/services.md`.
 
 ---
 
@@ -197,27 +190,27 @@ myEffect.pipe(
 )
 ```
 
-For deep guidance → load `references/services-and-layers.md`.
+For deep guidance → load `references/services.md`.
 
 ---
 
 ## Testing Quick Start
 
 ```ts
-import { it } from "@effect/vitest"
+import { assert, it } from "@effect/vitest"
 
 it.effect("creates a user", () =>
   Effect.gen(function* () {
     const users = yield* Users
     const user = yield* users.create({ name: "Alice", email: "a@test.com" })
-    expect(user.name).toBe("Alice")
+    assert.strictEqual(user.name, "Alice")
   }).pipe(Effect.provide(UsersTest))
 )
 ```
 
 - `it.effect` — auto-provides TestContext (TestClock, etc.)
 - `it.live` — uses real clock
-- `it.layer` — ONLY for expensive shared resources (DB pools)
+- `layer()` (imported from `@effect/vitest`) — ONLY for expensive shared resources (DB pools)
 - Provide test layers inline per test
 
 For deep guidance → load `references/testing.md`.
@@ -229,13 +222,13 @@ For deep guidance → load `references/testing.md`.
 
 When writing ANY Effect v4 code, these are MANDATORY:
 
-1. **ServiceMap.Service** for all services. Tag: `@app/ServiceName`. Never plain objects.
+1. **ServiceMap.Service** for all services. Tag: `"pkg/path/ServiceName"`. Interface as second type param with method syntax. Never plain objects.
 2. **Brand ALL entity IDs** with real constraints. Never bare `string` or `number`.
 3. **Schema.TaggedErrorClass** for ALL domain errors. Never throw. Never `Effect.fail("string")`.
 4. **Effect.fn** for all service methods. Enables call-site tracing.
 5. **Effect.provide at app entry ONLY**. Never scatter provides.
 6. **Effect.log** not console.log. **Config** not process.env. **Option** not null/undefined.
-7. **it.effect** from @effect/vitest for tests. Test layers inline.
+7. **it.effect** from @effect/vitest for tests. Use `assert` (not `expect`). Test layers inline.
 8. **readonly** on all service properties.
 </critical>
 
@@ -247,7 +240,8 @@ Load from `references/` on demand. **Never load all at once.**
 
 | Topic | File | Load When |
 |-------|------|-----------|
-| Services & Layers | `references/services-and-layers.md` | Creating or modifying services |
+| Services | `references/services.md` | Creating or modifying services |
+| Layers | `references/layers.md` | Layer composition, providing, memoization |
 | Data Modeling | `references/data-modeling.md` | Defining domain types |
 | Schema Decisions | `references/schema-decisions.md` | Choosing between Class, Struct, TaggedClass |
 | Error Handling | `references/error-handling.md` | Defining errors or recovery patterns |
@@ -258,6 +252,7 @@ Load from `references/` on demand. **Never load all at once.**
 | Processes | `references/processes.md` | Forking, scoping, child processes |
 | Setup | `references/setup.md` | Project setup, tsconfig, tooling |
 | Anti-Patterns | `references/anti-patterns.md` | Reviewing code for mistakes |
+| Reference Status | `references/effect-setup-status.md` | Auditing or updating this repo's references |
 
 ---
 

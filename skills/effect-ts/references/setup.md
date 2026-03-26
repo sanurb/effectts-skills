@@ -1,19 +1,17 @@
 # Project Setup
 
-## Local Development References (machine-specific)
+How to configure a new or existing project for Effect v4. This file covers **project-level tooling only** — tsconfig, editor, language service, testing, and development workflow.
 
-- **effect-solutions** (best practices, docs, examples): `~/.local/share/ai-references/effect/solutions/`
-- **effect monorepo** (canonical source for all `@effect/*` packages): `~/.local/share/ai-references/effect/monorepo/`
-- **effect-smol v4** (lighter API surface): `~/.local/share/ai-references/effect/v4/`
-- Search source for implementations: `grep -r "pattern" ~/.local/share/ai-references/effect/monorepo/packages/effect/src/`
+> **Reference repo management** is in [effect-setup-status.md](./effect-setup-status.md). Read that file when auditing or updating this repo's reference docs, not when setting up a user project.
 
 ## Table of Contents
 
 - [Effect Language Service](#effect-language-service)
 - [TypeScript Configuration](#typescript-configuration)
 - [Module Settings by Project Type](#module-settings-by-project-type)
-- [Reference Repositories](#reference-repositories)
+- [Testing Setup](#testing-setup)
 - [Development Workflow](#development-workflow)
+- [Acceptance Criteria](#acceptance-criteria)
 
 ## Effect Language Service
 
@@ -52,9 +50,9 @@ Your editor must use the **workspace** TypeScript version.
 }
 ```
 
-Then F1, "TypeScript: Select TypeScript version", "Use workspace version".
+Then F1 → "TypeScript: Select TypeScript version" → "Use workspace version".
 
-**JetBrains:** Settings, Languages & Frameworks, TypeScript, select workspace version.
+**JetBrains:** Settings → Languages & Frameworks → TypeScript → select workspace version.
 
 ### Build-Time Diagnostics
 
@@ -74,7 +72,7 @@ Persist across installs:
 
 ## TypeScript Configuration
 
-### Key Settings
+### Recommended tsconfig.json
 
 ```jsonc
 {
@@ -111,12 +109,14 @@ Persist across installs:
 
 ### Why These Settings
 
-- **incremental + composite**: Fast rebuilds, monorepo project references
-- **ES2022 + NodeNext**: Modern JS, proper ESM/CJS resolution
-- **verbatimModuleSyntax**: Preserves `import type` exactly
-- **rewriteRelativeImportExtensions**: Allows `.ts` in imports
-- **strict + exactOptionalPropertyTypes**: Maximum type safety
-- **skipLibCheck**: Faster builds (skip node_modules checking)
+| Setting | Reason |
+|---------|--------|
+| `incremental + composite` | Fast rebuilds, monorepo project references |
+| `ES2022 + NodeNext` | Modern JS, proper ESM/CJS resolution |
+| `verbatimModuleSyntax` | Preserves `import type` exactly |
+| `rewriteRelativeImportExtensions` | Allows `.ts` in imports |
+| `strict + exactOptionalPropertyTypes` | Maximum type safety |
+| `skipLibCheck` | Faster builds (skip node_modules checking) |
 
 ## Module Settings by Project Type
 
@@ -144,7 +144,7 @@ TypeScript acts as type-checker only. Bundler handles module transformation.
 }
 ```
 
-Required for npm packages, Node.js apps, and CLI tools. Enforces Node.js module resolution rules.
+Required for npm packages, Node.js apps, and CLI tools.
 
 Additional library settings:
 
@@ -158,32 +158,37 @@ Additional library settings:
 }
 ```
 
-**Rule of thumb:** Build tool compiling your code? Use `preserve` + `bundler`. TypeScript compiling your code? Use `NodeNext`.
+**Rule of thumb:** Build tool compiling your code → `preserve` + `bundler`. TypeScript compiling → `NodeNext`.
 
-## Reference Repositories
-
-Local clones for searching real implementations and patterns (clone into `~/.local/share/ai-references/effect/`):
-
-- **effect-solutions** (best practices): `~/.local/share/ai-references/effect/solutions/`
-- **effect monorepo** (all @effect packages): `~/.local/share/ai-references/effect/monorepo/`
-- **effect-smol v4**: `~/.local/share/ai-references/effect/v4/`
-
-Search examples:
+## Testing Setup
 
 ```bash
-# Find ServiceMap usage patterns
-grep -r "ServiceMap.Service" ~/.local/share/ai-references/effect/solutions/
-
-# Find Schema patterns in effect source
-grep -r "Schema.Class" ~/.local/share/ai-references/effect/monorepo/packages/effect/src/
-
-# Find test patterns
-grep -r "it.effect" ~/.local/share/ai-references/effect/monorepo/packages/*/test/
+bun add -D vitest @effect/vitest@beta
 ```
+
+```typescript
+// vitest.config.ts
+import { defineConfig } from "vitest/config"
+export default defineConfig({
+  test: { include: ["tests/**/*.test.ts"] },
+})
+```
+
+```json
+// package.json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}
+```
+
+Full testing patterns → load `references/testing.md`.
 
 ## Development Workflow
 
-From the effect monorepo AGENTS.md:
+From the Effect monorepo conventions:
 
 ```bash
 pnpm install          # install
@@ -195,9 +200,23 @@ pnpm docgen           # verify JSDoc examples
 pnpm codegen          # regenerate barrel files (index.ts)
 ```
 
-### Testing conventions (from Effect source)
+### Testing conventions
 
 - Use `it.effect` for all Effect-based tests, not `Effect.runSync` with regular `it`
 - Import `{ assert, describe, it }` from `@effect/vitest`
-- Use `assert` methods instead of `expect` from vitest in Effect tests
-- Test files live in `packages/*/test/`
+- Test files live in `tests/` or `packages/*/test/`
+
+## Acceptance Criteria
+
+After applying this setup, verify ALL of the following:
+
+- [ ] `tsconfig.json` has `"strict": true` and `"exactOptionalPropertyTypes": true`
+- [ ] `@effect/language-service` is in devDependencies
+- [ ] `tsconfig.json` has the language service plugin entry
+- [ ] `.vscode/settings.json` points to workspace TypeScript (if VS Code/Cursor)
+- [ ] `vitest.config.ts` exists with test include pattern
+- [ ] `@effect/vitest` is in devDependencies (beta channel)
+- [ ] `bun run test` executes without config errors
+- [ ] Module resolution matches project type (bundler vs NodeNext)
+
+If ANY check fails, STOP and report the specific failure. Do not proceed with partial setup.

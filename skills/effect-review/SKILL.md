@@ -1,93 +1,114 @@
 ---
 name: effect-review
-description: "Audit Effect v4 code for anti-patterns, type safety issues, and best practice violations. Reports findings with file:line references, fix suggestions, and severity scoring. Use when reviewing, auditing, or checking Effect code quality."
+description: "Audit Effect v4 code for anti-patterns, type safety issues, and best practice violations using a deterministic multi-phase harness. Dispatches ripgrep for text-safe rules, ast-grep for structural rules, and reserves LLM judgment for semantic-only rules. Reports findings with file:line evidence, fix suggestions, and severity scoring. Use when reviewing, auditing, or checking Effect code quality."
 context: fork
 agent: Explore
 effort: high
-allowed-tools: Read, Glob, Grep
 argument-hint: "[path or glob]"
+references:
+  - references/rule-dispatch-table.md
+  - references/ast-grep-rules.md
 ---
 
-# Effect Code Review
+# Effect Code Review Harness
 
-Audit Effect v4 code for anti-patterns and best practice violations.
+Deterministic multi-phase audit of Effect v4 code.
 
 ## Target
 
-$ARGUMENTS
-
-Default: all `.ts` files excluding node_modules, dist, build.
-
-## Project Files
-
-!`find . -name "*.ts" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.git/*" -not -path "*/build/*" 2>/dev/null | head -100 || echo "No .ts files found"`
+$ARGUMENTS — default: all `.ts` files excluding node_modules, dist, build.
 
 ---
 
-## Scan Workflow
+## Phase 0 · Scope
 
-1. **Find Effect files** — `Glob("**/*.ts")`, then filter to files importing from `effect/` or `@effect/`
-2. **For each file** — Check every item in the checklist below
-3. **Record findings** — file path, line number, checklist ID, current code, suggested fix
-4. **Score** — Critical = 10 points deducted, Warning = 3 points deducted. Score = max(0, 100 - total)
+Establish the candidate set. **Do not read any file yet.**
+
+```bash
+# 1. Find all Effect files (files importing effect/ or @effect/)
+rg -l --type ts "from ['\"](?:effect/|@effect/)" --glob '!node_modules' --glob '!dist' --glob '!build' .
+```
+
+- If **zero** files → report `No Effect code found` and **STOP**.
+- Store result as `$EFFECT_FILES` (newline-separated paths).
+- Count: `$FILE_COUNT`.
+
+**Dynamic scaling decision:**
+
+| $FILE_COUNT | Strategy |
+|-------------|----------|
+| ≤ 20 | Single-pass: run all phases sequentially |
+| 21–80 | Batch: process in groups of 20 |
+| > 80 | Parallel subagents: one per detection tier |
+
+---
+
+## Phase 1 · Dispatch
+
+Load rule dispatch table: [references/rule-dispatch-table.md](./references/rule-dispatch-table.md)
+
+Each rule has exactly one **detection tier**:
+
+| Tier | Tool | When |
+|------|------|------|
+| **text** | `rg` | Rule reduces to a literal or regex match |
+| **ast** | `ast-grep` | Rule requires structural context (nesting, scope) |
+| **semantic** | LLM read | Rule requires judgment, type flow, or cross-file reasoning |
+
+**Do NOT promote a text-tier rule to semantic. Do NOT demote a semantic rule to text.**
 
 ---
 
-## Checklist
+## Phase 2 · Detection
 
-### Critical — Must Fix
+Run each tier in order. Each produces `(file, line, rule_id, snippet)` tuples.
 
-| ID | Grep Pattern | What's Wrong | Fix |
-|----|-------------|--------------|-----|
-| C1 | `console.log` | Raw logging | `Effect.log` |
-| C2 | `process.env` | Raw env access | `Config` service |
-| C3 | `throw ` inside Effect.gen | Thrown exception | `yield* new MyError()` |
-| C4 | `Effect.fail("` | String error | `Schema.TaggedErrorClass` |
-| C5 | ID typed as bare `string` or `number` | Unbranded ID | `Schema.brand` with constraints |
-| C6 | `Effect.provide` not at entry point | Scattered provides | Centralize at app entry |
-| C7 | `Effect.runSync` inside service | Sync escape hatch | Compose with `Effect.gen` |
-| C8 | `Effect.catchAll` | Loses type info | `catchTag` / `catchTags` |
-| C9 | `null` or `undefined` in Effect types | Nullable types | `Option` |
-| C10 | Service method without `Effect.fn` | Missing tracing | Wrap with `Effect.fn("Name.method")` |
+### Tier A — Text (ripgrep)
 
-### Warning — Should Fix
+Run the exact `rg` commands from the dispatch table against `$EFFECT_FILES`.
+Parse output as `file:line:match`. Record each hit.
 
-| ID | Grep Pattern | What's Wrong | Fix |
-|----|-------------|--------------|-----|
-| W1 | `Option.getOrThrow` | Unsafe unwrap | `Option.match` |
-| W2 | `@effect-ts/` imports | v2 API | Migrate to `effect/` v4 |
-| W3 | `Schema.TaggedError` (not Class) | v3 API | `Schema.TaggedErrorClass` |
-| W4 | `Effect.service` (lowercase) | v3 API | `ServiceMap.Service` |
-| W5 | Mutable service properties | Mutability | Add `readonly` |
-| W6 | `Layer.effect(` called inside function | Breaks memoization | Module-level constant |
-| W7 | `it.layer` for cheap resources | Over-sharing | Inline `Effect.provide` per test |
-| W8 | Service tag without `@app/` | Non-standard tag | `@app/ServiceName` format |
+### Tier B — AST (ast-grep)
 
----
+For each ast-rule, run the command from [references/ast-grep-rules.md](./references/ast-grep-rules.md).
+Parse JSON output (`--json`). Record each hit with file, line, matched text.
+
+### Tier C — Semantic (LLM judgment)
+
+For **only** the semantic-tier rules, read candidate files and evaluate.
+Limit: read each file **at most once** across all semantic rules.
+For each candidate hit, record reasoning in one sentence.
 
 <critical>
-## Scan Rules
+### Detection Constraints
 
-- Check EVERY file importing from `effect/` or `@effect/`
-- Report EVERY violation found, not just the first
-- Include the ACTUAL code from the file in findings, not generic examples
-- Always include file path and line number
-- Do NOT report style issues (semicolons, quotes, formatting)
-- Do NOT suggest refactors beyond anti-pattern fixes
-- Do NOT count issues in node_modules, dist, or build directories
+- **Never** `find . | head` — use only `rg -l` for discovery.
+- **Never** read a file to check a text-tier or AST-tier rule.
+- **Never** skip a rule. Every rule in the dispatch table must be checked.
+- **Never** report a finding without an exact file path and line number.
+- **Never** report style issues (semicolons, quotes, formatting).
+- **Stop** a tier early if it produces > 200 raw hits (likely false-positive flood — note in report).
 </critical>
 
 ---
 
-## Output Format
+## Phase 3 · Deduplicate & Score
 
-Return findings in this EXACT structure:
+1. Merge all `(file, line, rule_id)` tuples.
+2. Deduplicate: same file + same line + same rule = one finding.
+3. Score: **Critical = −10 pts, Warning = −3 pts. Score = max(0, 100 − total).**
+
+---
+
+## Phase 4 · Report
+
+Output this **exact** structure (no deviation):
 
 ```markdown
 # Effect Review: {target}
 
-**Files scanned:** {count}
-**Effect files:** {count with Effect imports}
+**Files scanned:** {$FILE_COUNT}
+**Effect files with findings:** {count}
 **Score:** {score}/100
 
 ---
@@ -96,13 +117,14 @@ Return findings in this EXACT structure:
 
 ### C{id}: {title}
 **{file}:{line}**
-` ``ts
+```ts
 // Current
-{actual code from file}
+{actual code from file, 1–5 lines}
 
 // Fix
 {corrected code}
-` ``
+```
+> {one-sentence rationale}
 
 ---
 
@@ -110,13 +132,14 @@ Return findings in this EXACT structure:
 
 ### W{id}: {title}
 **{file}:{line}**
-` ``ts
+```ts
 // Current
-{actual code}
+{actual code from file}
 
 // Fix
 {corrected code}
-` ``
+```
+> {one-sentence rationale}
 
 ---
 
@@ -124,14 +147,14 @@ Return findings in this EXACT structure:
 
 | Severity | Count | Points |
 |----------|-------|--------|
-| Critical | {n} | -{n*10} |
-| Warning | {n} | -{n*3} |
+| Critical | {n} | −{n×10} |
+| Warning  | {n} | −{n×3}  |
 | **Score** | | **{score}/100** |
 
-**Verdict:** {PASS if ≥80 | NEEDS WORK if 50-79 | FAIL if <50}
+**Verdict:** {PASS ≥ 80 · NEEDS WORK 50–79 · FAIL < 50}
 
 **Top 3 improvements:**
-1. {highest impact fix}
+1. {highest-impact fix}
 2. {second}
 3. {third}
 ```
@@ -140,6 +163,26 @@ Return findings in this EXACT structure:
 
 ## Stop Conditions
 
-- STOP if no `.ts` files found in project
-- STOP if no files import from `effect/` or `@effect/`
-- Report "No Effect code found" and exit
+- Phase 0 returns zero files → `No Effect code found`, **STOP**.
+- All tiers produce zero findings → report clean scan with score 100/100.
+- Any tier exceeds 200 raw hits → cap that tier, note overflow.
+
+---
+
+## In This Reference
+
+| File | Purpose | When to read |
+|------|---------|--------------|
+| [rule-dispatch-table.md](./references/rule-dispatch-table.md) | Rule → tier → exact command mapping | Phase 1 (always) |
+| [ast-grep-rules.md](./references/ast-grep-rules.md) | YAML rules for structural checks | Phase 2 Tier B |
+
+## Anti-Patterns for This Skill
+
+| Do NOT | Do Instead |
+|--------|-----------|
+| `find . -name "*.ts" \| head -100` | `rg -l` with Effect import filter |
+| Read files to check text rules | `rg` with regex |
+| Read files to check AST rules | `ast-grep scan --rule` |
+| Scan full repo blindly | Scope to `$EFFECT_FILES` only |
+| Guess line numbers | Extract from tool output |
+| Report without code evidence | Always include actual snippet |
