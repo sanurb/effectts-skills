@@ -10,11 +10,12 @@
 
 ## Schema.TaggedErrorClass
 
-Define domain errors with `Schema.TaggedErrorClass`:
+Define domain errors with `Schema.TaggedErrorClass`. Two call forms — both are valid:
 
 ```typescript
 import { Schema } from "effect"
 
+// Form A: type parameter (canonical — used in v4 ai-docs source)
 class ValidationError extends Schema.TaggedErrorClass<ValidationError>()(
   "ValidationError",
   {
@@ -23,7 +24,8 @@ class ValidationError extends Schema.TaggedErrorClass<ValidationError>()(
   }
 ) {}
 
-class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()(
+// Form B: string identifier (used on effect.solutions website)
+class NotFoundError extends Schema.TaggedErrorClass("NotFoundError")(
   "NotFoundError",
   {
     resource: Schema.String,
@@ -34,6 +36,8 @@ class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()(
 const AppError = Schema.Union([ValidationError, NotFoundError])
 type AppError = typeof AppError.Type
 ```
+
+**Both forms compile and behave identically.** Form A (`<T>()`) provides better IDE inference for `this` inside the class body. Form B (`("Name")`) is shorter. Prefer Form A in service code; Form B is fine for simple errors.
 
 **Benefits:**
 - Serializable (can send over network, save to DB)
@@ -68,38 +72,35 @@ const rollDie = Effect.gen(function* () {
 
 ### catch
 
-Handle all errors with a fallback:
+Handle all errors with a fallback. Removes the entire error channel:
 
 ```typescript
 const recovered: Effect.Effect<string, never> = program.pipe(
-  Effect.catch((error) =>
-    Effect.gen(function* () {
-      yield* Effect.logError("Error occurred", error)
-      return `Recovered from ${error.name}`
-    })
-  )
+  Effect.catch((error) => Effect.succeed(`Recovered from ${error.name}`))
 )
 ```
 
 ### catchTag
 
-Handle a specific error by its `_tag`:
+Handle a specific error by its `_tag`. That error type is removed from the channel:
 
 ```typescript
 const recovered = program.pipe(
-  Effect.catchTag("HttpError", (error) =>
-    Effect.gen(function* () {
-      yield* Effect.logWarning(`HTTP ${error.statusCode}: ${error.message}`)
-      return "Recovered from HttpError"
-    })
-  )
+  Effect.catchTag("HttpError", (error) => Effect.succeed(`HTTP ${error.statusCode}`))
 )
-// HttpError is removed from the error channel; other errors remain
+```
+
+**Array overload** — catch multiple tags with one handler:
+
+```typescript
+const recovered = loadPort("80").pipe(
+  Effect.catchTag(["ParseError", "ReservedPortError"], (_) => Effect.succeed(3000))
+)
 ```
 
 ### catchTags
 
-Handle multiple error types at once:
+Handle multiple error types at once with per-tag handlers:
 
 ```typescript
 const recovered = program.pipe(
@@ -108,7 +109,6 @@ const recovered = program.pipe(
     ValidationError: () => Effect.succeed("Recovered from ValidationError"),
   })
 )
-// Both error types removed from the error channel
 ```
 
 ## Expected Errors vs Defects
@@ -180,14 +180,19 @@ class QuotaExceededError extends Schema.TaggedErrorClass<QuotaExceededError>()(
   { limit: Schema.Number }
 ) {}
 
+class SafetyBlockedError extends Schema.TaggedErrorClass<SafetyBlockedError>()(
+  "SafetyBlockedError",
+  { category: Schema.String }
+) {}
+
 class AiError extends Schema.TaggedErrorClass<AiError>()(
   "AiError",
-  { reason: Schema.Union([RateLimitError, QuotaExceededError]) }
+  { reason: Schema.Union([RateLimitError, QuotaExceededError, SafetyBlockedError]) }
 ) {}
 
 declare const callModel: Effect.Effect<string, AiError>
 
-// Handle one specific reason
+// Handle one specific reason (with optional catch-all for the rest)
 const handleOne = callModel.pipe(
   Effect.catchReason(
     "AiError",
@@ -211,11 +216,12 @@ const unwrapped = callModel.pipe(
   Effect.catchTags({
     RateLimitError: (r) => Effect.succeed(`Back off ${r.retryAfter}s`),
     QuotaExceededError: (r) => Effect.succeed(`Increase beyond ${r.limit}`),
+    SafetyBlockedError: (r) => Effect.succeed(`Blocked: ${r.category}`),
   })
 )
 ```
 
-**Use reason errors when:** a single error type wraps multiple failure modes (API errors, validation sub-types). Avoids proliferating top-level error types while keeping typed recovery.
+**Use reason errors when:** a single error type wraps multiple failure modes (API errors, AI provider errors, validation sub-types). Avoids proliferating top-level error types while keeping typed recovery.
 
 ## Schema.ErrorClass (Non-Tagged)
 
@@ -256,11 +262,9 @@ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()(
 
 ### Static refail Helper (from @effect/cluster)
 
-Create a static method that maps any error into your domain error:
+Map any error into a domain error with a static method:
 
 ```typescript
-import { Cause, Effect, Schema } from "effect"
-
 class PersistenceError extends Schema.TaggedErrorClass<PersistenceError>()(
   "PersistenceError",
   { cause: Schema.Defect }
@@ -274,20 +278,14 @@ class PersistenceError extends Schema.TaggedErrorClass<PersistenceError>()(
   }
 }
 
-// Usage: wrap any database call
 const safeQuery = PersistenceError.refail(rawDbCall)
 ```
 
 ### Effect.flip (Swap Success/Error for Testing)
 
 ```typescript
-it.effect("should fail on invalid input", () =>
-  Effect.gen(function* () {
-    const service = yield* MyService
-    const error = yield* service.doThing(badInput).pipe(Effect.flip)
-    expect(error._tag).toBe("ValidationError")
-  }).pipe(Effect.provide(TestLayer))
-)
+const error = yield* service.doThing(badInput).pipe(Effect.flip)
+assert.strictEqual(error._tag, "ValidationError")
 ```
 
 Patterns adapted from [artimath/effect-skills](https://github.com/artimath/effect-skills) (MIT).

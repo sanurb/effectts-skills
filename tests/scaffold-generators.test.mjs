@@ -98,9 +98,11 @@ assert(
   ext.includes('TaggedErrorClass<${name}NotFoundError>()'),
   "Extension: TaggedErrorClass has type parameter"
 );
+// Both forms are valid: <T>()("Tag") and ("Tag")("Tag")
+// Verify at least one instance uses the type-parameter form (canonical)
 assert(
-  !errorHandling.includes('TaggedErrorClass("'),
-  "error-handling.md: no old TaggedErrorClass(\"Tag\") pattern"
+  errorHandling.includes('TaggedErrorClass<'),
+  "error-handling.md: has type-parameter form TaggedErrorClass<T>()"
 );
 
 // ─── 4. No dead code / v3 APIs in scaffolds ────────────────────────

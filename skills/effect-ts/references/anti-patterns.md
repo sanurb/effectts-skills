@@ -9,7 +9,7 @@ Single source of truth for all anti-pattern rules. Referenced by `effect-review/
 | C1 | `console.log` | `console.log(...)` | `Effect.log(...)` | Structured logging, observability |
 | C2 | `process.env` | `process.env.KEY` | `Config.string("KEY")` or `Config.redacted("KEY")` | Type-safe, testable config |
 | C3 | `throw` in gen | `throw new Error()` inside `Effect.gen` | `yield* new TaggedError({...})` | Thrown errors become defects, not typed failures |
-| C4 | String error | `Effect.fail("string")` | `Schema.TaggedErrorClass` with context fields | Typed errors enable `catchTag` recovery |
+| C4 | String error | `Effect.fail("string")` as a primary error type | `Schema.TaggedErrorClass` with context fields | Typed errors enable `catchTag` recovery. Note: `Effect.fail("string")` is acceptable inside catch handlers or one-off scripts where the error is already being re-mapped. Only flag when it's the *primary* failure path of a service method. |
 | C5 | Unbranded ID | ID typed as bare `string` or `number` | `Schema.brand` with real constraints (pattern, range) | Prevents cross-entity ID confusion |
 | C6 | Scattered provide | `Effect.provide` not at entry point | Provide once at app entry | Scattered provides hide dependency graph |
 | C7 | Sync escape | `Effect.runSync` inside service | Compose with `Effect.gen` | Breaks composition and testability |
@@ -29,18 +29,29 @@ Single source of truth for all anti-pattern rules. Referenced by `effect-review/
 | W6 | Layer in function | `Layer.effect(` called inside function | Module-level constant | Breaks memoization |
 | W7 | Over-shared layer | `layer()` for cheap resources | Inline `Effect.provide` per test | Test isolation. v4: use `layer()` import from `@effect/vitest`, not `it.layer()`. |
 | W8 | Bad tag format | Service tag without package path | `"pkg/path/ServiceName"` format | Canonical v4 convention |
-| W9 | Bare brand | `Schema.String.pipe(Schema.brand("X"))` with no constraints | Add `Schema.pattern()`, `Schema.NonEmptyString`, or range checks | Brands without validation are phantom types |
+| W9 | Bare brand | `Schema.String.pipe(Schema.brand("X"))` with no constraints | Add `Schema.pattern()`, `Schema.NonEmptyString`, or range checks | Brands without validation are phantom types. Note: bare brands are acceptable for domain primitives where the constraint is purely nominal (e.g., `Email`, `Slug`) and the value is already validated upstream. Only flag when a constraint *could* be expressed but is missing. |
 
 ## Code Examples
 
-### C4: Never use Effect.fail with plain strings
+### C4: Avoid Effect.fail with plain strings as primary errors
 
 ```ts
-// Wrong
-yield* Effect.fail("not found")
+// Wrong — primary failure path of a service method
+const findUser = Effect.fn("Users.findById")(function* (id: UserId) {
+  yield* Effect.fail("not found") // untyped, no context, can't catchTag
+})
 
-// Correct
-yield* new UserNotFoundError({ userId })
+// Correct — typed error with context
+const findUser = Effect.fn("Users.findById")(function* (id: UserId) {
+  yield* new UserNotFoundError({ userId: id })
+})
+
+// Acceptable — string inside a catch handler (error is being re-mapped)
+const recovered = program.pipe(
+  Effect.catchTag("HttpError", (e) =>
+    Effect.fail(`Network error: ${e.reason}`)
+  )
+)
 ```
 
 ### C6: Never scatter Effect.provide
