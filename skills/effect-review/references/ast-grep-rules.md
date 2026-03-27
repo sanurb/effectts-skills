@@ -90,6 +90,27 @@ rule:
 
 ---
 
+## C14 — try/catch inside Effect.gen
+
+Detects `try` statements inside `Effect.gen` callbacks.
+
+```bash
+ast-grep scan --inline-rules "id: c14-try-catch-in-gen
+language: typescript
+rule:
+  kind: try_statement
+  inside:
+    has:
+      pattern: Effect.gen(\$\$\$)
+    stopBy: end" --json $EFFECT_FILES
+```
+
+**Why AST:** `rg` for `try` would match try/catch outside Effect.gen (false positives). AST nesting check is required.
+
+**Fix:** Replace `try { ... } catch { ... }` with `Effect.try({ try: () => ..., catch: (e) => new MyError({ cause: e }) })`.
+
+---
+
 ## Running All AST Rules at Once
 
 For efficiency, write a temporary YAML file with all rules and scan once:
@@ -124,6 +145,15 @@ rule:
     any:
       - kind: function_declaration
       - kind: arrow_function
+    stopBy: end
+---
+id: c14-try-catch-in-gen
+language: typescript
+rule:
+  kind: try_statement
+  inside:
+    has:
+      pattern: Effect.gen($$$)
     stopBy: end
 RULES
 

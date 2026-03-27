@@ -153,8 +153,8 @@ assert(
   "Review skill does NOT duplicate the full checklist table"
 );
 assert(
-  antiPatterns.includes("| C1 |") && antiPatterns.includes("| W9 |"),
-  "anti-patterns.md has complete checklist (C1 through W9)"
+  antiPatterns.includes("| C1 |") && antiPatterns.includes("| W9 |") && antiPatterns.includes("| C15 |"),
+  "anti-patterns.md has complete checklist (C1 through C15 and W1 through W9)"
 );
 assert(
   schemaDecisions.includes("see [anti-patterns.md]"),
@@ -170,7 +170,7 @@ assert(
 console.log("\n=== Shared pattern config ===");
 
 const patterns = JSON.parse(read("shared/patterns.json"));
-assert(Array.isArray(patterns) && patterns.length === 8, "patterns.json has 8 entries");
+assert(Array.isArray(patterns) && patterns.length === 9, "patterns.json has 9 entries");
 
 for (const p of patterns) {
   assert(typeof p.id === "string" && p.id.length > 0, `  ${p.id}: has id`);
@@ -310,7 +310,7 @@ console.log("\n=== Reference file sizes ===");
 
 const refDir = "skills/effect-ts/references";
 const refs = [
-  "anti-patterns.md", "cli.md", "config.md", "data-modeling.md",
+  "anti-patterns.md", "cli.md", "concurrency.md", "config.md", "data-modeling.md",
   "effect-setup-status.md", "error-handling.md", "http-clients.md",
   "layers.md", "processes.md", "schema-decisions.md",
   "services.md", "setup.md", "testing.md"

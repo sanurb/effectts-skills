@@ -18,6 +18,11 @@ Source of truth for rule definitions: `skills/effect-ts/references/anti-patterns
 | C8 | Lossy catch | semantic | Read file; check `Effect.catchAll` / `Effect.catch` handlers that discard or generalize the error type. Requires judgment on handler body. |
 | C9 | Nullable types | text | `rg -n '\|\s*null\b\|\s*undefined\b' $EFFECT_FILES` — pre-filter; then confirm hit is in Effect domain type (interface/type near Effect imports) via LLM. **Hybrid: text pre-filter + semantic confirm.** |
 | C10 | Missing tracing | semantic | Read service files; check public methods lack `Effect.fn` wrapper. Requires understanding of service boundaries. |
+| C11 | Unbounded parallelism | text+confirm | `rg -n 'Effect\.all\(' $EFFECT_FILES` then read 5-line window; only flag if no `{ concurrency:` option in the same call. |
+| C12 | Fire-and-forget fork | text+confirm | `rg -n 'Effect\.forkChild\|Effect\.forkDetach' $EFFECT_FILES` then read 5-line window; flag if result is not assigned or never joined. |
+| C13 | Shared mutable state | semantic | Read files with concurrent patterns (`Effect.all`, `Effect.forEach` with concurrency); check for `let` variables captured in the concurrent scope. Requires scope analysis. |
+| C14 | try/catch in Effect | ast | See ast-grep-rules.md §C14 |
+| C15 | Promise.all in Effect | text | `rg -n 'Promise\.all' $EFFECT_FILES` |
 
 ## Warning Rules
 
@@ -37,10 +42,10 @@ Source of truth for rule definitions: `skills/effect-ts/references/anti-patterns
 
 | Tier | Rules | Tool |
 |------|-------|------|
-| text | C1, C2, C7, W1, W2, W3, W4, W8 | `rg` — no file reading |
-| text+confirm | C4, C9, W9 | `rg` pre-filter → LLM confirms within 5-line window |
-| ast | C3, C6, W6 | `ast-grep scan` — no file reading |
-| semantic | C5, C8, C10, W5, W7 | LLM reads file — judgment required |
+| text | C1, C2, C7, C15, W1, W2, W3, W4, W8 | `rg` — no file reading |
+| text+confirm | C4, C9, C11, C12, W9 | `rg` pre-filter → LLM confirms within 5-line window |
+| ast | C3, C6, C14, W6 | `ast-grep scan` — no file reading |
+| semantic | C5, C8, C10, C13, W5, W7 | LLM reads file — judgment required |
 
 ## Hybrid Rule Protocol
 

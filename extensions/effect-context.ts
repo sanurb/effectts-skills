@@ -15,6 +15,7 @@ const TOPICS: Record<string, { file: string; label: string }> = {
   http: { file: "http-clients.md", label: "HTTP Clients" },
   cli: { file: "cli.md", label: "CLI" },
   config: { file: "config.md", label: "Config" },
+  concurrency: { file: "concurrency.md", label: "Concurrency" },
   processes: { file: "processes.md", label: "Processes & Scopes" },
   setup: { file: "setup.md", label: "Project Setup" },
   status: { file: "effect-setup-status.md", label: "Reference Status" },

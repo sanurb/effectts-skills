@@ -31,6 +31,16 @@ Single source of truth for all anti-pattern rules. Referenced by `effect-review/
 | W8 | Bad tag format | Service tag without package path | `"pkg/path/ServiceName"` format | Canonical v4 convention |
 | W9 | Bare brand | `Schema.String.pipe(Schema.brand("X"))` with no constraints | Add `Schema.pattern()`, `Schema.NonEmptyString`, or range checks | Brands without validation are phantom types. Note: bare brands are acceptable for domain primitives where the constraint is purely nominal (e.g., `Email`, `Slug`) and the value is already validated upstream. Only flag when a constraint *could* be expressed but is missing. |
 
+## Concurrency — Must Fix
+
+| ID | Pattern | Do Not | Do Instead | Why |
+|----|---------|--------|-----------|-----|
+| C11 | Unbounded parallelism | `Effect.all(items.map(fn))` without concurrency | `Effect.forEach(items, fn, { concurrency: N })` | Overwhelms services, memory spikes, no backpressure |
+| C12 | Fire-and-forget fork | `Effect.forkChild(work)` without join or supervision | `Fiber.join(fiber)` or `Effect.forkScoped(work)` | Leaks fibers, loses errors silently |
+| C13 | Shared mutable state | `let counter = 0` modified in concurrent effects | `Ref.make(0)` + `Ref.update` | Race conditions, non-deterministic bugs |
+| C14 | try/catch in Effect | `try { } catch { }` inside `Effect.gen` | `Effect.try` or `Effect.tryPromise` | Bypasses typed error channel, catch is invisible to Effect |
+| C15 | Promise.all in Effect | `Promise.all([...])` inside Effect logic | `Effect.all([...], { concurrency: N })` | No interruption, no supervision, no typed errors |
+
 ## Code Examples
 
 ### C4: Avoid Effect.fail with plain strings as primary errors
@@ -63,6 +73,50 @@ const result = myEffect.pipe(Effect.provide(MyLayer))
 // Correct — provide once at entry point
 const program = mainEffect.pipe(Effect.provide(AppLayer))
 BunRuntime.runMain(program)
+```
+
+### C11: Always bound parallelism
+
+```ts
+// Wrong — unbounded
+yield* Effect.all(urls.map(fetch))
+
+// Correct — bounded
+yield* Effect.forEach(urls, fetch, { concurrency: 10 })
+```
+
+### C13: Use Ref for shared concurrent state
+
+```ts
+// Wrong — race condition
+let count = 0
+yield* Effect.all([
+  Effect.sync(() => { count++ }),
+  Effect.sync(() => { count++ }),
+])
+
+// Correct — atomic
+const count = yield* Ref.make(0)
+yield* Effect.all([
+  Ref.update(count, (n) => n + 1),
+  Ref.update(count, (n) => n + 1),
+])
+```
+
+### C14: Never use try/catch inside Effect.gen
+
+```ts
+// Wrong — error invisible to Effect
+yield* Effect.sync(() => {
+  try { return JSON.parse(input) }
+  catch { return null }
+})
+
+// Correct — typed error channel
+yield* Effect.try({
+  try: () => JSON.parse(input),
+  catch: (error) => new ParseError({ input, error }),
+})
 ```
 
 ### W9: Never use bare brands without constraints

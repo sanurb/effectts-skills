@@ -249,6 +249,7 @@ Load from `references/` on demand. **Never load all at once.**
 | HTTP Clients | `references/http-clients.md` | Making HTTP requests |
 | CLI | `references/cli.md` | Building CLI tools |
 | Config | `references/config.md` | Loading configuration |
+| Concurrency | `references/concurrency.md` | Parallelism, fibers, Ref, racing, timeouts |
 | Processes | `references/processes.md` | Forking, scoping, child processes |
 | Setup | `references/setup.md` | Project setup, tsconfig, tooling |
 | Anti-Patterns | `references/anti-patterns.md` | Reviewing code for mistakes |

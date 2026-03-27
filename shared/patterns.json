@@ -46,5 +46,11 @@
     "patterns": ["Scope\\.make", "Scope\\.extend", "Effect\\.forkDetach", "Effect\\.forkDaemon", "Effect\\.forkScoped", "Command\\.start"],
     "ref": "processes.md",
     "label": "Processes & Scopes"
+  },
+  {
+    "id": "concurrency",
+    "patterns": ["Effect\\.all\\(", "Effect\\.forEach\\(", "Effect\\.race", "Fiber\\.join", "Fiber\\.interrupt", "Ref\\.make", "Ref\\.update", "Effect\\.blocking", "Schedule\\.exponential"],
+    "ref": "concurrency.md",
+    "label": "Concurrency"
   }
 ]
