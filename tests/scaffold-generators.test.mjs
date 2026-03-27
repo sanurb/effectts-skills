@@ -61,7 +61,7 @@ assert(
 );
 assert(
   servicesRef.includes("ServiceMap.Service<"),
-  "services-and-layers.md uses generic ServiceMap.Service"
+  "services.md uses generic ServiceMap.Service"
 );
 
 // ─── 2. No @app/ tag convention anywhere ─────────────────────────────
@@ -141,9 +141,10 @@ assert(
 
 console.log("\n=== Anti-pattern deduplication ===");
 
+const dispatchTable = read("skills/effect-review/references/rule-dispatch-table.md");
 assert(
-  reviewSkill.includes("Load rules") && reviewSkill.includes("anti-patterns.md"),
-  "Review skill references anti-patterns.md as source of truth"
+  dispatchTable.includes("anti-patterns.md"),
+  "Review dispatch table references anti-patterns.md as source of truth"
 );
 assert(
   !reviewSkill.includes("| C1 |"),
@@ -275,8 +276,8 @@ assert(
 console.log("\n=== Cross-skill reference paths ===");
 
 assert(
-  reviewSkill.includes("skills/effect-ts/references/anti-patterns.md"),
-  "Review skill uses full path to anti-patterns.md (not relative)"
+  dispatchTable.includes("skills/effect-ts/references/anti-patterns.md"),
+  "Review dispatch table uses full path to anti-patterns.md"
 );
 
 // ─── 12. No bare brands in reference examples ──────────────────────
@@ -298,19 +299,10 @@ for (let i = 0; i < servicesLines.length; i++) {
 
 // ─── 13. Redirect file deleted ──────────────────────────────────────
 
-console.log("\n=== Redirect file is small ===");
+console.log("\n=== Redirect file deleted ===");
 
 const salPath = join(root, "skills", "effect-ts", "references", "services-and-layers.md");
-if (existsSync(salPath)) {
-  const salContent = read("skills/effect-ts/references/services-and-layers.md");
-  const salLines = salContent.split("\n").length;
-  assert(salLines < 20, `services-and-layers.md is a redirect (${salLines} lines, <20)`);
-  assert(salContent.includes("services.md") && salContent.includes("layers.md"),
-    "services-and-layers.md points to services.md and layers.md"
-  );
-} else {
-  assert(true, "services-and-layers.md redirect deleted (also acceptable)");
-}
+assert(!existsSync(salPath), "services-and-layers.md redirect deleted");
 
 console.log("\n=== Reference file sizes ===");
 
@@ -319,7 +311,7 @@ const refs = [
   "anti-patterns.md", "cli.md", "config.md", "data-modeling.md",
   "effect-setup-status.md", "error-handling.md", "http-clients.md",
   "layers.md", "processes.md", "schema-decisions.md",
-  "services-and-layers.md", "services.md", "setup.md", "testing.md"
+  "services.md", "setup.md", "testing.md"
 ];
 
 for (const ref of refs) {

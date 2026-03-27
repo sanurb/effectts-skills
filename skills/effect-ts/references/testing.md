@@ -155,6 +155,32 @@ it.effect("time-based test", () =>
 )
 ```
 
+## Parameterized and Property-Based Tests
+
+### it.effect.each (Parameterized)
+
+```typescript
+it.effect.each([
+  { input: " Ada ", expected: "ada" },
+  { input: " Lin ", expected: "lin" },
+])("normalizes %#", ({ input, expected }) =>
+  Effect.gen(function* () {
+    assert.strictEqual(input.trim().toLowerCase(), expected)
+  })
+)
+```
+
+### it.effect.prop (Property-Based with Schema Arbitraries)
+
+```typescript
+it.effect.prop("reversing twice is identity", [Schema.String], ([value]) =>
+  Effect.gen(function* () {
+    const reversed = value.split("").reverse().reverse().join("")
+    assert.strictEqual(reversed, value)
+  })
+)
+```
+
 ## Test Modifiers
 
 ```typescript

@@ -30,6 +30,20 @@ class Database extends ServiceMap.Service<Database, {
 - Service methods have no dependencies (`R = never`). Dependencies via Layer composition
 - Attach `static readonly layer` and `static readonly testLayer` on the class
 
+## ServiceMap.Reference
+
+For configuration values, feature flags, or any service with a default value:
+
+```typescript
+import { ServiceMap } from "effect"
+
+const FeatureFlag = ServiceMap.Reference<boolean>("myapp/FeatureFlag", {
+  defaultValue: () => false
+})
+```
+
+Override in layers or tests — the default is used when no provider exists.
+
 ## Layer Implementations
 
 Use `Layer.effect` for effectful implementations and `Layer.sync` for synchronous ones:

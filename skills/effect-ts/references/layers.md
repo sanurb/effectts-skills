@@ -29,7 +29,7 @@ const program = Effect.gen(function* () {
 
 // Provide once
 const main = program.pipe(Effect.provide(appLayer))
-Effect.runPromise(main)
+BunRuntime.runMain(main)
 ```
 
 **Why provide once:**
@@ -92,6 +92,107 @@ const goodLayer = Layer.merge(
 ```
 
 **Rule:** Parameterized layer constructors → always store in a module-level constant.
+
+## Layer.launch and Layer.effectDiscard
+
+`Layer.launch` converts a layer into a long-running `Effect<never>` — the canonical entry point for layer-based apps:
+
+```typescript
+import { NodeRuntime } from "@effect/platform-node"
+import { Effect, Layer } from "effect"
+
+const BackgroundWorker = Layer.effectDiscard(Effect.gen(function* () {
+  yield* Effect.logInfo("Starting worker...")
+  yield* Effect.gen(function* () {
+    while (true) {
+      yield* Effect.sleep("5 seconds")
+      yield* Effect.logInfo("Working...")
+    }
+  }).pipe(
+    Effect.onInterrupt(() => Effect.logInfo("Worker interrupted")),
+    Effect.forkScoped
+  )
+}))
+
+NodeRuntime.runMain(Layer.launch(BackgroundWorker))
+```
+
+- `Layer.effectDiscard`: run an effect when the layer is built, no service exposed
+- `Layer.launch`: convert layer → long-running Effect with graceful shutdown
+
+## Layer.unwrap (Dynamic Layer Selection)
+
+Build a layer dynamically from config or an Effect:
+
+```typescript
+import { Config, Effect, Layer } from "effect"
+
+class MessageStore extends ServiceMap.Service<MessageStore, {
+  append(msg: string): Effect.Effect<void>
+}>()("myapp/MessageStore") {
+  static readonly layerInMemory = Layer.effect(MessageStore, /* ... */)
+  static readonly layerRemote = (url: URL) => Layer.effect(MessageStore, /* ... */)
+
+  static readonly layer = Layer.unwrap(
+    Effect.gen(function* () {
+      const useInMemory = yield* Config.boolean("IN_MEMORY").pipe(
+        Config.withDefault(false)
+      )
+      if (useInMemory) return MessageStore.layerInMemory
+      const url = yield* Config.url("STORE_URL")
+      return MessageStore.layerRemote(url)
+    })
+  )
+}
+```
+
+## LayerMap.Service (Dynamic Keyed Resources)
+
+Dynamically manage resources keyed by identifier (e.g., per-tenant pools):
+
+```typescript
+import { Effect, Layer, LayerMap, ServiceMap } from "effect"
+
+class TenantPool extends ServiceMap.Service<TenantPool, {
+  query(sql: string): Effect.Effect<ReadonlyArray<unknown>>
+}>()("myapp/TenantPool") {
+  static readonly layer = (tenantId: string) =>
+    Layer.effect(TenantPool, /* ... per-tenant implementation ... */)
+}
+
+class PoolMap extends LayerMap.Service<PoolMap>()("myapp/PoolMap", {
+  lookup: (tenantId: string) => TenantPool.layer(tenantId),
+  idleTimeToLive: "1 minute"
+}) {}
+
+// Usage: PoolMap.get("acme") provides TenantPool for that tenant
+const program = Effect.gen(function* () {
+  const pool = yield* TenantPool
+  return yield* pool.query("SELECT * FROM users")
+}).pipe(Effect.provide(PoolMap.get("acme")), Effect.provide(PoolMap.layer))
+```
+
+## ManagedRuntime (Bridge to Non-Effect Code)
+
+Use `ManagedRuntime` to integrate Effect with external frameworks (Hono, Express):
+
+```typescript
+import { Effect, Layer, ManagedRuntime } from "effect"
+
+const appMemoMap = Layer.makeMemoMapUnsafe()
+const runtime = ManagedRuntime.make(TodoRepo.layer, { memoMap: appMemoMap })
+
+// In framework handler:
+app.get("/todos", async (ctx) => {
+  const todos = await runtime.runPromise(
+    TodoRepo.use((repo) => repo.getAll)
+  )
+  return ctx.json(todos)
+})
+
+// Graceful shutdown
+process.once("SIGTERM", () => void runtime.dispose())
+```
 
 ## Sharing Layers Between Tests
 

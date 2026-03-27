@@ -15,7 +15,7 @@ Define domain errors with `Schema.TaggedErrorClass`:
 ```typescript
 import { Schema } from "effect"
 
-class ValidationError extends Schema.TaggedErrorClass("ValidationError")(
+class ValidationError extends Schema.TaggedErrorClass<ValidationError>()(
   "ValidationError",
   {
     field: Schema.String,
@@ -23,7 +23,7 @@ class ValidationError extends Schema.TaggedErrorClass("ValidationError")(
   }
 ) {}
 
-class NotFoundError extends Schema.TaggedErrorClass("NotFoundError")(
+class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()(
   "NotFoundError",
   {
     resource: Schema.String,
@@ -50,7 +50,7 @@ type AppError = typeof AppError.Type
 ```typescript
 import { Effect, Random, Schema } from "effect"
 
-class BadLuck extends Schema.TaggedErrorClass("BadLuck")(
+class BadLuck extends Schema.TaggedErrorClass<BadLuck>()(
   "BadLuck",
   { roll: Schema.Number }
 ) {}
@@ -136,7 +136,7 @@ Wrap unknown errors from external libraries with `Schema.Defect`:
 ```typescript
 import { Schema, Effect } from "effect"
 
-class ApiError extends Schema.TaggedErrorClass("ApiError")(
+class ApiError extends Schema.TaggedErrorClass<ApiError>()(
   "ApiError",
   {
     endpoint: Schema.String,
@@ -163,6 +163,72 @@ const fetchUser = (id: string) =>
 
 **Use for:** wrapping external library errors, network boundaries, persisting errors to DB, logging systems.
 
+## Reason Errors (Nested Error Channels)
+
+Define a tagged error with a tagged `reason` field for structured sub-errors:
+
+```typescript
+import { Effect, Schema } from "effect"
+
+class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()(
+  "RateLimitError",
+  { retryAfter: Schema.Number }
+) {}
+
+class QuotaExceededError extends Schema.TaggedErrorClass<QuotaExceededError>()(
+  "QuotaExceededError",
+  { limit: Schema.Number }
+) {}
+
+class AiError extends Schema.TaggedErrorClass<AiError>()(
+  "AiError",
+  { reason: Schema.Union([RateLimitError, QuotaExceededError]) }
+) {}
+
+declare const callModel: Effect.Effect<string, AiError>
+
+// Handle one specific reason
+const handleOne = callModel.pipe(
+  Effect.catchReason(
+    "AiError",
+    "RateLimitError",
+    (reason) => Effect.succeed(`Retry after ${reason.retryAfter}s`),
+    (reason) => Effect.succeed(`Failed: ${reason._tag}`)
+  )
+)
+
+// Handle multiple reasons at once
+const handleMultiple = callModel.pipe(
+  Effect.catchReasons("AiError", {
+    RateLimitError: (r) => Effect.succeed(`Retry after ${r.retryAfter}s`),
+    QuotaExceededError: (r) => Effect.succeed(`Quota: ${r.limit}`),
+  })
+)
+
+// Unwrap reasons into the error channel for flat handling
+const unwrapped = callModel.pipe(
+  Effect.unwrapReason("AiError"),
+  Effect.catchTags({
+    RateLimitError: (r) => Effect.succeed(`Back off ${r.retryAfter}s`),
+    QuotaExceededError: (r) => Effect.succeed(`Increase beyond ${r.limit}`),
+  })
+)
+```
+
+**Use reason errors when:** a single error type wraps multiple failure modes (API errors, validation sub-types). Avoids proliferating top-level error types while keeping typed recovery.
+
+## Schema.ErrorClass (Non-Tagged)
+
+For opaque errors that don't need `_tag` discrimination (wrapping external library failures):
+
+```typescript
+class SmtpError extends Schema.ErrorClass<SmtpError>("SmtpError")({
+  cause: Schema.Defect
+}) {}
+```
+
+Use `Schema.TaggedErrorClass` for domain errors; `Schema.ErrorClass` for infrastructure wrapping.
+
 ## Advanced Patterns
 
 ### TypeId Branding (from Effect core packages)
@@ -176,7 +242,7 @@ import { Schema } from "effect"
 export const TypeId: unique symbol = Symbol.for("@myapp/AppError")
 export type TypeId = typeof TypeId
 
-export class NotFoundError extends Schema.TaggedErrorClass("NotFoundError")(
+export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()(
   "NotFoundError",
   { resource: Schema.String, id: Schema.String }
 ) {
@@ -195,14 +261,14 @@ Create a static method that maps any error into your domain error:
 ```typescript
 import { Cause, Effect, Schema } from "effect"
 
-class PersistenceError extends Schema.TaggedErrorClass("PersistenceError")(
+class PersistenceError extends Schema.TaggedErrorClass<PersistenceError>()(
   "PersistenceError",
   { cause: Schema.Defect }
 ) {
   static refail<A, E, R>(
     effect: Effect.Effect<A, E, R>
   ): Effect.Effect<A, PersistenceError, R> {
-    return Effect.catchAllCause(effect, (cause) =>
+    return Effect.catchCause(effect, (cause) =>
       Effect.fail(new PersistenceError({ cause: Cause.squash(cause) }))
     )
   }

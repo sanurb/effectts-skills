@@ -222,7 +222,7 @@ class GitHubApi extends ServiceMap.Service<
         return yield* HttpClientResponse.schemaBodyJson(Schema.Array(Repo))(response)
       })
 
-      return { getUser, getRepo, listRepos }
+      return GitHubApi.of({ getUser, getRepo, listRepos })
     })
   )
 
